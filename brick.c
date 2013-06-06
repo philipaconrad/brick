@@ -49,9 +49,9 @@ void brickInit(brickContext* ctx, char** blockPtrList, char* memory, uint32 numB
     }
 }
 
-//TODO: div by block size!!!!!
 
 //Returns the starting index/key of the first fit for an allocation of length `length`.
+//Returns 0 on failure, 1+ on success. (thus, our indexes start at 1, much like in Lua.)
 //brickFindOpenRun :: brickContext* -> uint32 -> uint32
 uint32 brickFindOpenRun(brickContext* ctx, uint32 length) {
     uint32 i = 0;
@@ -62,6 +62,7 @@ uint32 brickFindOpenRun(brickContext* ctx, uint32 length) {
             currentRun++;
             if(currentRun == length) {
                 i -= (currentRun-1);
+                i++; //start indexes at 1+
                 break;
             }
             continue;
@@ -75,6 +76,7 @@ uint32 brickFindOpenRun(brickContext* ctx, uint32 length) {
 
 
 //Returns a key for later access into the index.
+//Returns BRICK_ALLOC_ERROR on failure.
 //blockMalloc :: brickContext -> uint32 -> Effect -> uint32
 uint32 brickMalloc(brickContext* ctx, uint32 size) {
     uint32 key;
@@ -86,20 +88,14 @@ uint32 brickMalloc(brickContext* ctx, uint32 size) {
 
     key = brickFindOpenRun(ctx, blocksNeeded);
 
-    //0th index allocation case:
+    //allocation failure case:
     if(!key) {
-        //Check to see if index[0] is dirty:
-        if(ctx->blockptrlist[0]) {
-            //Error, this index is not clean!
-            //printf("allocation error!");
-            goto endpoint;
-        }
-        else {
-            goto writeptrs;
-        }
+        key = BRICK_ALLOC_ERROR;
+        goto endpoint;
     }
 
-writeptrs:
+    //subtract 1 to obtain true start index location, and write pointers:
+    key -= 1;
     for(i = key; i < key+blocksNeeded; i++) {
         ctx->blockptrlist[i] = &ctx->memory[key*ctx->blockSize]; //FINISH!!
     }
@@ -110,11 +106,34 @@ endpoint:
 
 
 //"Frees" memory by zeroing out the pointers in the pointer array.
-//NOTE: if FREE_DEST_BLOCKS is set, then the blocks of memory will also be zeroed out.
+//NOTE: if BRICK_ZERO_WRITE_DEST_BLOCKS is set, then the blocks of memory will also be zeroed out.
 //blockFree :: brickContext* -> uint32 -> Effect
 void brickFree(brickContext* ctx, uint32 key) {
     uint32 i = key;
     char* keyval = ctx->blockptrlist[key];
+
+#ifdef BRICK_ZERO_WRITE_DEST_BLOCKS
+    uint32 j   = 0;
+    uint32 len = 0;
+    char* dest = keyval;
+    //determine number of blocks to write to:
+    for(; i < ctx->numBlocks; i++) {
+        if(ctx->blockptrlist[i] == keyval) {
+            len++;
+            continue;
+        }
+        break;
+    }
+    //double loop to free each block, byte-by-byte:
+    for(i = 0; i < len; i++) {
+        //slightly-nasty pointer arithmetic over the next two lines.
+        //nothing too fancy, just progressive incrementing over the range of addresses to be zeroed out.
+        for(j = 0; j < ctx->blockSize; j++) { *((char*)(uint32)(dest+j)) = 0; continue; }
+        dest = (char*)(uint32)(dest + ctx->blockSize);
+    }
+    //revert the state of i for the normal path of execution:
+    i = 0;
+#endif //ifdef BRICK_ZERO_WRITE_DEST_BLOCKS
 
     for(; i < ctx->numBlocks; i++) {
         if(ctx->blockptrlist[i] == keyval) {

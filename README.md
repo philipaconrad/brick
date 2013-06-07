@@ -48,8 +48,9 @@ The result is essentially an overlay of malloc and free. See the [example][1] pr
     ```
 
  - **Accessing an allocated block:**
-   To access memory blocks allocated with brick, just access the array by key.
-   The key returned from `brickMalloc()` will correspond to the start of the range of pointers in the block pointer array.
+   To access memory blocks allocated with brick, just access the `char*` array by 
+   the key provided by `brickMalloc()`. If 2 blocks were used in the allocation, 
+   then the next index's pointer (at key+1) will point to the same location. See 
 
    *Example:*
    
@@ -60,7 +61,10 @@ The result is essentially an overlay of malloc and free. See the [example][1] pr
     ```
 
  - **Find the length (in blocks) of an allocation:**
-   A simple loop should be sufficient.
+   When an allocation occurs, brick matches the pointers in the `char*` array 
+   by index with the blocklist, and sets the matching `char*`s to all point to 
+   the start of the allocation. This means that one can discover the number of blocks
+   used in an allocation by looking at how many similar pointers are in the `char*` array.
 
    *Example:*
 
@@ -68,7 +72,8 @@ The result is essentially an overlay of malloc and free. See the [example][1] pr
     brickContext* ctx;
     uint32 keyval;
     uint32 i = 0;
-
+    
+    //accumulate the number of matching pointers in `i`.
     for(; (i < ctx->numBlocks) && (ctx->blockptrlist[i] == keyval); i++) { continue; }
 
     //`i` now holds the number of blocks in the allocation.

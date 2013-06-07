@@ -4,6 +4,27 @@ brick
 A small, fixed-size block allocator suitable for use as a heap allocator.
 This allocator works well for fixed-memory environs, where all of the blocks in a block list can rest contiguously in memory.
 
+### How it works
+
+A `char*` array is mapped one-to-one with a contiguous chunk of memory, 
+each pointer corresponding to a matching "block" of a uniform, predetermined size.
+
+    ```
+    char*    allocated memory
+    array
+               +-------+
+    +---+      | +---+ |
+    | 0 |  ->  | | 0 | |
+    +---+      | +---+ |
+    | 1 |  ->  | | 1 | |
+    +---+      | +---+ |
+    | 2 |  ->  | | 2 | |
+    +---+      | +---+ |
+               +-------+
+    ```
+
+The result is essentially an overlay of malloc and free. See the [example][1] program for how this works in practice.
+
 
 ### API
  - `void   brickInit(brickContext* ctx, char** blockPtrList, char* memory, uint32 numBlocks, uint32 blockSize);`
@@ -14,23 +35,43 @@ This allocator works well for fixed-memory environs, where all of the blocks in 
 
 
 ### Idioms
- - Malloc Error Check:
+ - **Malloc Error Check:**
    To see if `brickMalloc()` failed, check to see if its return value is equivalent to BRICK_MALLOC_ERROR.
-   Ex:
+
+   *Example:*
+
     ```
     uint32 key = brickMalloc(&bc, 9001);
     if(key == BRICK_MALLOC_ERROR) {
         /* ... failure-handling code ... */
     }
     ```
- - Accessing an allocated block:
+
+ - **Accessing an allocated block:**
    To access memory blocks allocated with brick, just access the array by key.
-   The key returned from `brickMalloc()` will correspond with the correct index.
-   Ex:
+   The key returned from `brickMalloc()` will correspond to the start of the range of pointers in the block pointer array.
+
+   *Example:*
+   
     ```
     uint32 key = brickMalloc(&bc, 9001);
     char* src  = blocks[key];
     uint32 strLength = strlen(src);
+    ```
+
+ - **Find the length (in blocks) of an allocation:**
+   A simple loop should be sufficient.
+
+   *Example:*
+
+    ```
+    brickContext* ctx;
+    uint32 keyval;
+    uint32 i = 0;
+
+    for(; (i < ctx->numBlocks) && (ctx->blockptrlist[i] == keyval); i++) { continue; }
+
+    //`i` now holds the number of blocks in the allocation.
     ```
 
 
@@ -66,3 +107,5 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+   [1]: https://github.com/philipaconrad/brick/blob/master/example.c

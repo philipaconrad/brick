@@ -7,6 +7,7 @@
 
 #include "types.h"
 #include "brick.h"
+#include <string.h>
 
 
 //---------------------------------------------------------
@@ -38,11 +39,11 @@ uint32 swedeRoundUp(uint32 x, uint32 multiple) {
 //Zeroes out initial memory of the pointer array, and sets the context's reference to the slab of memory.
 //brickInit :: brickContext* -> [char*] -> char* -> uint32 -> uint32 -> Effect
 void brickInit(brickContext* ctx, char** blockPtrList, char* memory, uint32 numBlocks, uint32 blockSize) {
-    uint32 i = 0;
+    uint32 i          = 0;
     ctx->blockptrlist = blockPtrList;
-    ctx->memory = memory;
-    ctx->numBlocks = numBlocks;
-    ctx->blockSize = blockSize;
+    ctx->memory       = memory;
+    ctx->numBlocks    = numBlocks;
+    ctx->blockSize    = blockSize;
 
     for(; i < numBlocks; i++) {
         ctx->blockptrlist[i] = 0;
@@ -54,7 +55,7 @@ void brickInit(brickContext* ctx, char** blockPtrList, char* memory, uint32 numB
 //Returns 0 on failure, 1+ on success. (thus, our indexes start at 1, much like in Lua.)
 //brickFindOpenRun :: brickContext* -> uint32 -> uint32
 uint32 brickFindOpenRun(brickContext* ctx, uint32 length) {
-    uint32 i = 0;
+    uint32 i          = 0;
     uint32 currentRun = 0;
 
     for(; i < ctx->numBlocks; i++) {
@@ -79,11 +80,10 @@ uint32 brickFindOpenRun(brickContext* ctx, uint32 length) {
 //Returns BRICK_ALLOC_ERROR on failure.
 //blockMalloc :: brickContext -> uint32 -> Effect -> uint32
 uint32 brickMalloc(brickContext* ctx, uint32 size) {
-    uint32 key;
-    uint32 i = 0;
+    uint32 i            = 0;
+    uint32 key          = 0;
     uint32 blocksNeeded = swedeRoundUp(size, ctx->blockSize);
-    char* memRef = ctx->memory;
-    
+
     blocksNeeded = blocksNeeded / ctx->blockSize;
 
     key = brickFindOpenRun(ctx, blocksNeeded);
@@ -109,30 +109,19 @@ endpoint:
 //NOTE: if BRICK_ZERO_WRITE_DEST_BLOCKS is set, then the blocks of memory will also be zeroed out.
 //blockFree :: brickContext* -> uint32 -> Effect
 void brickFree(brickContext* ctx, uint32 key) {
-    uint32 i = key;
+    uint32 i     = key;
     char* keyval = ctx->blockptrlist[key];
 
 #ifdef BRICK_ZERO_WRITE_DEST_BLOCKS
-    uint32 j   = 0;
-    uint32 len = 0;
-    char* dest = keyval;
-    //determine number of blocks to write to:
-    for(; i < ctx->numBlocks; i++) {
-        if(ctx->blockptrlist[i] == keyval) {
-            len++;
-            continue;
-        }
-        break;
-    }
-    //double loop to free each block, byte-by-byte:
-    for(i = 0; i < len; i++) {
-        //slightly-nasty pointer arithmetic over the next two lines.
-        //nothing too fancy, just progressive incrementing over the range of addresses to be zeroed out.
-        for(j = 0; j < ctx->blockSize; j++) { *((char*)(uint32)(dest+j)) = 0; continue; }
-        dest = (char*)(uint32)(dest + ctx->blockSize);
-    }
-    //revert the state of i for the normal path of execution:
-    i = 0;
+    //determine number of blocks to write to, accumulating the count in `i`:
+    for(; (i < ctx->numBlocks) && (ctx->blockptrlist[i] == keyval); i++) { continue; }
+
+    //zero-write over the blocks:
+    memset(keyval, '\0', i*ctx->blockSize);
+    
+    //reset the state of i for the normal path of execution:
+    i = key;
+
 #endif //ifdef BRICK_ZERO_WRITE_DEST_BLOCKS
 
     for(; i < ctx->numBlocks; i++) {

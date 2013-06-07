@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------------------
 // brick.h -- The basic definitions for the allocator.
-// Copyright (C) Philip Conrad 5/13/2013 @ 12:14 PM -- MIT License
+// Copyright (c) Philip Conrad 5/13/2013 @ 12:14 PM -- MIT License
 //
 //-----------------------------------------------------------------------------
 
@@ -19,7 +19,8 @@
 
 //If BRICK_ZERO_WRITE_DEST_BLOCKS is defined, then the underlying memory will be 
 //zeroed out on brickFree calls. This is a suggested safety feature.
-#define BRICK_ZERO_WRITE_DEST_BLOCKS 1
+//#define BRICK_ZERO_WRITE_DEST_BLOCKS 1
+
 
 //---------------------------------------------------------
 // DATA STRUCTURES & TYPEDEFS:

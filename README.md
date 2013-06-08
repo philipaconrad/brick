@@ -1,15 +1,20 @@
 brick
 =======
 
-A small, fixed-size block allocator suitable for use as a heap allocator.
-This allocator works well for fixed-memory environs, where all of the blocks in a block list can rest contiguously in memory.
+brick is a fixed-memory block allocator with a simple interface.
+
+It is *strictly* an interface (brick performs no mallocs or frees under the hood).
+
+Its purpose is to make structured access to a chunk of memory easier.
+
 
 ### How it works
 
-A `char*` array is mapped one-to-one with a contiguous chunk of memory, 
-each pointer corresponding to a matching "block" of a uniform, predetermined size.
+A `char*` array is (implicitly) mapped one-to-one with a contiguous chunk of memory, 
+each pointer corresponding to a matching "block" in the chunk of memory. These blocks 
+are of a uniform size, chosen at compile-time.
 
-    ```
+
     char*    allocated memory
     array
                +-------+
@@ -21,9 +26,18 @@ each pointer corresponding to a matching "block" of a uniform, predetermined siz
     | 2 |  ->  | | 2 | |
     +---+      | +---+ |
                +-------+
-    ```
 
-The result is essentially an overlay of malloc and free. See the [example][1] program for how this works in practice.
+
+Thanks to the implicit mapping, mallocs occur when one or more of the `char*` pointers is directed to point at 
+a block in the preallocated chunk of memory. To "free" a block, its corresponding pointer is simply set to 0.
+
+When multiple blocks are allocated together, the corresponding `char*` pointers are all set to point to the same 
+address: the start of the allocation. The result is that the programmer can discover the precise size of an 
+allocation by observing the number of equivalent pointers in a row.
+
+See the [example][1] program for how this all works in practice.
+
+See [Idioms](#idioms) for handy usage tips and examples.
 
 
 ### API
@@ -36,47 +50,90 @@ The result is essentially an overlay of malloc and free. See the [example][1] pr
 
 ### Idioms
  - **Malloc Error Check:**
-   To see if `brickMalloc()` failed, check to see if its return value is equivalent to BRICK_MALLOC_ERROR.
+   To see if `brickMalloc()` failed, check to see if its return value is equivalent to *BRICK_MALLOC_ERROR* 
+   (which is currently a convenient alias for the constant *0xFFFFFFFF*).
 
    *Example:*
 
     ```
-    uint32 key = brickMalloc(&bc, 9001);
+    //setup:
+    brickContext* ctx;
+    uint32 key;
+    
+    //attempt an allocation, and get a key to it:
+    key = brickMalloc(&bc, 9001);
+    
+    //check for an allocation failure:
     if(key == BRICK_MALLOC_ERROR) {
         /* ... failure-handling code ... */
     }
     ```
 
  - **Accessing an allocated block:**
-   To access memory blocks allocated with brick, just access the `char*` array by 
-   the key provided by `brickMalloc()`. If 2 blocks were used in the allocation, 
-   then the next index's pointer (at key+1) will point to the same location. See 
+   To access memory blocks allocated with brick, just access the `char*` array with the unsigned integer key 
+   provided by `brickMalloc()`.
 
    *Example:*
    
     ```
-    uint32 key = brickMalloc(&bc, 9001);
-    char* src  = blocks[key];
-    uint32 strLength = strlen(src);
+    //setup:
+    brickContext* ctx;
+    char* blocks[128]; //pointed at by ctx->blockptrlist.
+    uint32 key;
+    uint32 strLength;
+    
+    //allocate however many blocks necessary to contain at least 9001 bytes:
+    key = brickMalloc(&bc, 9001);
+    
+    //stuff a small string into our allocated blocks:
+    strncpy(blocks[key], "This is a nice program.", 23);
+    
+    //find the length of the string we stored:
+    strLength = strlen(blocks[key]);
     ```
 
- - **Find the length (in blocks) of an allocation:**
-   When an allocation occurs, brick matches the pointers in the `char*` array 
-   by index with the blocklist, and sets the matching `char*`s to all point to 
-   the start of the allocation. This means that one can discover the number of blocks
-   used in an allocation by looking at how many similar pointers are in the `char*` array.
+ - **Finding the length (in blocks) of an allocation:**
+   One can discover the number of blocks used in an allocation by looking at how 
+   many similar pointers are in the `char*` array.
 
    *Example:*
 
     ```
+    //setup:
     brickContext* ctx;
+    char* blocks[128]; //pointed at by ctx->blockptrlist.
     uint32 keyval;
-    uint32 i = 0;
+    uint32 i;
     
     //accumulate the number of matching pointers in `i`.
-    for(; (i < ctx->numBlocks) && (ctx->blockptrlist[i] == keyval); i++) { continue; }
+    for(i = 0; (i < ctx->numBlocks) && (ctx->blockptrlist[i] == keyval); i++) { continue; }
 
     //`i` now holds the number of blocks in the allocation.
+    printf("%d blocks used.\n", i);
+    ```
+
+ - **Out-of-order frees:**
+   Freeing blocks out of order is safe since brick has no concept of nested/scoped memory allocation.
+
+   *Example:*
+
+    ```
+    //setup:
+    brickContext* ctx;
+    uint32 id1;
+    uint32 id2;
+    uint32 id3;
+    
+    //allocate some blocks:
+    id1 = brickMalloc(&bc, 5);
+    id2 = brickMalloc(&bc, 23);
+    id3 = brickMalloc(&bc, 781);
+
+    //"free" those allocations:
+    //note: these "frees" can be done out of order without breaking anything.
+    brickFree(&bc, id2);
+    brickFree(&bc, id3);
+    brickFree(&bc, id1);
     ```
 
 
